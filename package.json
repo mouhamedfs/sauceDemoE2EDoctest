@@ -1,0 +1,23 @@
+{
+  "name": "sauceflacky-e2e",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "test": "playwright test; npm run allure:report && npm run allure:open",
+    "test:smoke": "playwright test --grep @smoke; npm run allure:report && npm run allure:open",
+    "test:ci": "playwright test",
+    "test:smoke:ci": "playwright test --grep @smoke",
+    "upload:doctest": "node scripts/doctest-upload.mjs",
+    "allure:report": "allure generate ./allure-results -o ./allure-report --clean",
+    "allure:open": "allure open allure-report"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.49.1",
+    "@types/node": "^22.10.0",
+    "typescript": "^5.7.3",
+    "dotenv": "^16.4.7",
+    "@faker-js/faker": "^9.9.0",
+    "allure-playwright": "^2.15.1",
+    "allure-commandline": "^2.29.0"
+  }
+}

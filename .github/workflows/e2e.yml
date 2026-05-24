@@ -1,0 +1,50 @@
+# Secrets CI requis :
+#   DOCTEST_PROJECT_TOKEN — token projet Doctest (Settings → Secrets)
+#   BASE_URL              — URL de l'app testée
+# Variable optionnelle :
+#   DOCTEST_API_URL       — défaut https://api.doctest.dev
+name: E2E (Playwright)
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+      - name: Install dependencies
+        run: npm ci || npm install
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps
+      - name: Run Playwright tests
+        continue-on-error: true
+        env:
+          BASE_URL: ${{ secrets.BASE_URL }}
+          TEST_USER_EMAIL: ${{ secrets.TEST_USER_EMAIL }}
+          TEST_USER_PASSWORD: ${{ secrets.TEST_USER_PASSWORD }}
+        run: npm run test:ci
+      - name: Generate Allure report
+        if: always()
+        run: npm run allure:report
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: allure-report
+          path: allure-report/
+      - name: Upload E2E report to Doctest
+        if: always()
+        continue-on-error: true
+        env:
+          DOCTEST_PROJECT_TOKEN: ${{ secrets.DOCTEST_PROJECT_TOKEN }}
+          DOCTEST_API_URL: ${{ vars.DOCTEST_API_URL }}
+          DOCTEST_BRANCH: ${{ github.ref_name }}
+          DOCTEST_SHA: ${{ github.sha }}
+        run: npm run upload:doctest
