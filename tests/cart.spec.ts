@@ -1,5 +1,4 @@
 import { test, expect } from '../fixtures/test.fixture';
-import type { BrowserContext, Page } from '@playwright/test';
 
 test.describe('Cart — product management @smoke @critical', () => {
   test.describe.configure({ mode: 'parallel' });
@@ -47,63 +46,39 @@ test.describe('Cart — product management @smoke @critical', () => {
     });
   });
 
-  // Contexte navigateur partagé entre les tests @flaky : une fois React "chaud",
-  // les mises à jour badge/bouton deviennent asynchrones → échecs intermittents.
-  test.describe('Flaky cart scenarios @flaky', () => {
-    test.describe.configure({ mode: 'serial' });
-
-    let warmContext: BrowserContext;
-    let warmPage: Page;
-
-    test.beforeAll(async ({ browser }) => {
-      console.log('beforeAll warmContext', Math.random());
-      warmContext = await browser.newContext({ storageState: 'playwright/.auth/user.json' });
-      warmPage = await warmContext.newPage();
+  test("should add backpack using first inventory button — flaky locator @flaky", async ({ inventoryPage, cartPage }) => {
+    await test.step('arrange — navigate to inventory and pick a random sort order', async () => {
+      await inventoryPage.goto();
+      const randomSort = Math.random() > 0.5 ? 'az' : 'lohi';
+      await inventoryPage.page.locator('[data-test="product-sort-container"]').selectOption(randomSort);
     });
-
-    test.afterAll(async () => {
-      await warmContext?.close();
+    await test.step('act — click the first add-to-cart button with a positional locator', async () => {
+      // Locator volontairement flaky : on suppose que le premier bouton du listing
+      // correspond toujours au backpack, alors que l ordre dépend du tri choisi.
+      await inventoryPage.page.locator('.inventory_item .btn_inventory').first().click();
+      await inventoryPage.openCart();
     });
-
-    test.beforeEach(async () => {
-      await warmPage.close().catch(() => undefined);
-      warmPage = await warmContext.newPage();
-      await warmPage.goto('/inventory.html');
+    await test.step('assert — verify the backpack was added', async () => {
+      await expect(cartPage.page.getByTestId('inventory-item-name').first()).toHaveText('Sauce Labs Backpack');
     });
+  });
 
-    test.afterEach(async () => {
-      await warmPage.close().catch(() => undefined);
+  test("should keep a single item in cart — invented hidden precondition @flaky", async ({ inventoryPage, cartPage }) => {
+    await test.step('arrange — navigate to inventory and always add the backpack', async () => {
+      await inventoryPage.goto();
+      await inventoryPage.addToCart();
     });
-
-    test('should display cart badge after adding product — flaky locator @flaky', async () => {
-      await test.step('act + assert — add via fragile CSS locator, read badge in same tick', async () => {
-        // Locator instable : sélecteur CSS générique (.btn_inventory) sans data-testid.
-        // Lecture dans le même tick JS que le clic — le badge React n'est pas
-        // toujours peint quand l'assertion s'exécute (~50 % d'échec).
-        const badgeUpdated = await warmPage.evaluate(() => {
-          document.querySelector('.inventory_item .btn_inventory')?.click();
-          const badge = document.querySelector('.shopping_cart_link .shopping_cart_badge');
-          return badge?.textContent === '1';
-        });
-        console.log('badgeUpdated', badgeUpdated);
-        expect(badgeUpdated).toBe(true);
-      });
+    await test.step('act — sometimes add a second product without reflecting it in the assertion', async () => {
+      // Flaky inventé : précondition cachée aléatoire.
+      // Une exécution sur deux ajoute aussi le second produit, mais l assertion
+      // continue de supposer que le panier contient exactement un item.
+      if (Math.random() > 0.5) {
+        await inventoryPage.page.locator('.inventory_item button').nth(1).click();
+      }
+      await inventoryPage.openCart();
     });
-
-    test('should sync badge and button state after add — UI update race @flaky', async () => {
-      await test.step('act + assert — atomic check on badge AND button swap in same tick', async () => {
-        // Race condition inventée : React bascule le bouton add→remove de façon synchrone
-        // mais met à jour le badge panier de façon asynchrone. Exiger les deux dans
-        // le même tick produit un échec intermittent (~50 %).
-        const stateSynced = await warmPage.evaluate(() => {
-          document.getElementById('add-to-cart-sauce-labs-backpack')?.click();
-          const badge = document.querySelector('.shopping_cart_badge')?.textContent;
-          const addStillVisible = !!document.getElementById('add-to-cart-sauce-labs-backpack');
-          return badge === '1' && !addStillVisible;
-        });
-        console.log('stateSynced', stateSynced);
-        expect(stateSynced).toBe(true);
-      });
+    await test.step('assert — verify the cart still contains exactly one line item', async () => {
+      await expect(cartPage.page.getByTestId('inventory-item-name')).toHaveCount(1);
     });
   });
 });
